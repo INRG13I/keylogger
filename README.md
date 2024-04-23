@@ -6,6 +6,9 @@ Conventions:
 
 
 Error code dictionary:
+    
+    
+    
     general:
         1-unable to get host name
         2-unable to open logfile
@@ -19,6 +22,10 @@ Error code dictionary:
 
 
 TODO:
+    
+    
+    
+    
     main:
         -make it in sh and make it so it just finds what os is on the machine and calls for the compiler to compile and run the file respective to the os
 
