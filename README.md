@@ -27,10 +27,12 @@ TODO:
     
     
     main:
-        -make it in sh and make it so it just finds what os is on the machine and calls for the compiler to compile and run the file respective to the os
+        decide wtf to di with it
 
 
     macos:
+
+        !!!!find a way to remove  the process  from the procecesses list(it shows even after ending the child process with control+c-maybe a kill command?)
         -move the contents of the macos_test2.c to keylogger_macos.c
         -remove the duplicate functions
         -mofify the main of the macos_test2 so it calls for the utils function createLog
