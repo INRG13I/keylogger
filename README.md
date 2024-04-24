@@ -44,3 +44,8 @@ TODO:
 
     linux:
         -fricking make it
+
+    
+    utils:
+        -modify the create log so it also gives the name of the file(future proofing for file send)
+        

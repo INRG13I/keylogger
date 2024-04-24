@@ -18,7 +18,6 @@ void hideConsole() {
 }
 
 FILE *logfile;
-char *logfileLocation;
 
 
 CGKeyCode previousKeyCode = 0;
@@ -213,8 +212,6 @@ int script_macos() {
         fprintf(stderr, "ERROR: Unable to open log file. Ensure that you have the proper permissions.\n");
         return 2;
     }
-
-    logfileLocation = logFileName;
 
     CGEventMask eventMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventFlagsChanged);
     CFMachPortRef eventTap = CGEventTapCreate(
