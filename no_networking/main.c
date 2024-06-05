@@ -42,6 +42,10 @@ int main() {
     strcat(frameworkFlags, " -framework ApplicationServices -framework Carbon"); // Add framework flags for macOS
 #endif
 
+#ifdef __linux__
+    strcat(libraryFlags, " -lX11"); // Add X11 library flag for Linux
+#endif
+
     snprintf(compileCommand, sizeof(compileCommand), "gcc -o %s %s%s", executableName, sourceFile, strcmp(os, "macOS") == 0 ? frameworkFlags : "");
 
     // Form the run command
